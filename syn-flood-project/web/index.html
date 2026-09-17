@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Purrfect Pals — Home</title>
+<style>
+  :root { --brand:#6c5ce7; --brand-dark:#5a4bd4; --ink:#1c2333; --muted:#6b7280; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; font-family:'Segoe UI',system-ui,sans-serif;
+         background:#f5f6fb; color:var(--ink); display:flex; flex-direction:column; }
+  header { background:#fff; border-bottom:1px solid #eceef3; padding:16px 28px;
+           display:flex; align-items:center; justify-content:space-between; }
+  .logo { font-weight:800; font-size:19px; color:var(--brand); letter-spacing:-.3px; }
+  .logo span { color:var(--ink); }
+  nav a { color:var(--muted); text-decoration:none; font-size:14px; margin-left:22px; }
+  nav a:hover { color:var(--ink); }
+  .hero { flex:1; display:flex; align-items:center; justify-content:center; padding:48px 20px; }
+  .card { text-align:center; background:#fff; padding:52px 56px; border-radius:20px;
+          box-shadow:0 10px 40px rgba(30,30,60,0.08); max-width:520px; }
+  .cat { font-size:88px; line-height:1; margin-bottom:10px; }
+  h1 { font-size:30px; margin:8px 0 12px; letter-spacing:-.5px; }
+  .lead { font-size:16px; color:var(--muted); line-height:1.6; margin:0 0 32px; }
+  .btn { display:inline-flex; align-items:center; gap:10px; cursor:pointer;
+         background:var(--brand); color:#fff; border:none; font-family:inherit;
+         font-size:16px; font-weight:600; padding:15px 30px; border-radius:12px;
+         box-shadow:0 6px 18px rgba(108,92,231,0.35); transition:transform .1s, background .2s; }
+  .btn:hover { background:var(--brand-dark); }
+  .btn:active { transform:translateY(2px); }
+  footer { text-align:center; color:#9aa2b1; font-size:13px; padding:20px; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">🐾 Purrfect<span>Pals</span></div>
+    <nav><a href="/">Home</a><a href="/cats.html">Gallery</a><a href="/cats.html">Adopt</a></nav>
+  </header>
+  <div class="hero">
+    <div class="card">
+      <div class="cat">🐱</div>
+      <h1>Welcome to Purrfect Pals</h1>
+      <p class="lead">Your friendly neighborhood cat community. Browse our gallery
+         of adorable rescues waiting to meet you.</p>
+      <button class="btn" onclick="window.location.href='/cats.html'">Browse the Gallery →</button>
+    </div>
+  </div>
+  <footer>© 2026 Purrfect Pals · Making tails wag since today</footer>
+</body>
+</html>

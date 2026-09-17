@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Purrfect Pals — Gallery</title>
+<style>
+  :root { --brand:#6c5ce7; --brand-dark:#5a4bd4; --ink:#1c2333; --muted:#6b7280; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; font-family:'Segoe UI',system-ui,sans-serif;
+         background:#f5f6fb; color:var(--ink); }
+  header { background:#fff; border-bottom:1px solid #eceef3; padding:16px 28px;
+           display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; }
+  .logo { font-weight:800; font-size:19px; color:var(--brand); letter-spacing:-.3px; }
+  .logo span { color:var(--ink); }
+  nav a { color:var(--muted); text-decoration:none; font-size:14px; margin-left:22px; }
+  nav a:hover { color:var(--ink); }
+  .wrap { max-width:920px; margin:0 auto; padding:36px 20px 60px; }
+  h1 { font-size:28px; margin:0 0 6px; letter-spacing:-.5px; }
+  .sub { color:var(--muted); margin:0 0 26px; font-size:15px; }
+  .fact { background:#efeafe; border:1px solid #ddd4fb; color:#4a3fb0; border-radius:12px;
+          padding:14px 18px; font-size:14px; margin-bottom:28px; display:flex; gap:10px; align-items:center; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:18px; }
+  .tile { background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 6px 20px rgba(30,30,60,0.06);
+          text-align:center; padding:22px 12px 18px; transition:transform .12s; }
+  .tile:hover { transform:translateY(-4px); }
+  .tile .emo { font-size:56px; line-height:1; }
+  .tile .name { font-weight:700; margin-top:10px; font-size:15px; }
+  .tile .breed { color:var(--muted); font-size:12.5px; margin-top:2px; }
+  .tile .tag { display:inline-block; margin-top:10px; font-size:11px; font-weight:600;
+               color:var(--brand); background:#efeafe; padding:3px 10px; border-radius:20px; }
+  .backbtn { display:inline-flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:24px;
+             background:#fff; border:1px solid #e2e5ec; color:var(--ink); font-family:inherit;
+             font-size:14px; font-weight:600; padding:10px 18px; border-radius:10px; }
+  .backbtn:hover { background:#f0f1f6; }
+  .more { text-align:center; margin-top:30px; }
+  .morebtn { cursor:pointer; background:var(--brand); color:#fff; border:none; font-family:inherit;
+             font-size:15px; font-weight:600; padding:13px 28px; border-radius:12px;
+             box-shadow:0 6px 18px rgba(108,92,231,0.35); }
+  .morebtn:hover { background:var(--brand-dark); }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">🐾 Purrfect<span>Pals</span></div>
+    <nav><a href="/">Home</a><a href="/cats.html">Gallery</a><a href="/cats.html">Adopt</a></nav>
+  </header>
+  <div class="wrap">
+    <button class="backbtn" onclick="window.location.href='/'">← Back to Home</button>
+    <h1>Meet our rescues</h1>
+    <p class="sub">Every one of these fluffballs is looking for a forever home.</p>
+    <div class="fact" id="fact">🐈 Did you know? Loading a fun cat fact...</div>
+    <div class="grid" id="grid"></div>
+    <div class="more"><button class="morebtn" onclick="addCat()">Load more cats 🐾</button></div>
+  </div>
+<script>
+  const emojis = ["🐱","🐈","😺","😸","😻","🙀","😹","😽","🐈‍⬛","🐅","🐆"];
+  const names  = ["Whiskers","Mochi","Luna","Simba","Nala","Oliver","Cleo","Milo",
+                  "Tigger","Pumpkin","Shadow","Biscuit","Coco","Pepper","Ziggy"];
+  const breeds = ["Persian","Tabby","Siamese","Bengal","Ragdoll","Maine Coon",
+                  "British Shorthair","Calico","Sphynx","Scottish Fold"];
+  const tags   = ["Adoptable","New arrival","Playful","Cuddly","Shy","Loves naps"];
+  const facts  = [
+    "Cats sleep for around 13–16 hours a day.",
+    "A group of cats is called a 'clowder'.",
+    "Cats have five toes on their front paws, but only four on the back.",
+    "A cat's purr vibrates at a frequency that can promote healing.",
+    "Cats can rotate their ears 180 degrees.",
+    "The oldest known pet cat existed 9,500 years ago.",
+    "Cats can make over 100 different vocal sounds."
+  ];
+  const pick = a => a[Math.floor(Math.random()*a.length)];
+  function makeCat(){
+    const el = document.createElement('div'); el.className = 'tile';
+    el.innerHTML = `<div class="emo">${pick(emojis)}</div>
+                    <div class="name">${pick(names)}</div>
+                    <div class="breed">${pick(breeds)}</div>
+                    <div class="tag">${pick(tags)}</div>`;
+    return el;
+  }
+  function addCat(){ document.getElementById('grid').appendChild(makeCat()); }
+  const grid = document.getElementById('grid');
+  for (let i=0;i<8;i++) grid.appendChild(makeCat());
+  const factBox = document.getElementById('fact');
+  function newFact(){ factBox.textContent = "🐈 Did you know? " + pick(facts); }
+  newFact(); setInterval(newFact, 4000);
+</script>
+</body>
+</html>

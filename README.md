@@ -1,195 +1,210 @@
 # TCP SYN Flood + DoS Attack — CSE406 Design Project
 
-Custom raw-socket SYN flood attack tool built from scratch (no hping3/Scapy/other
-pre-built tools) for the CSE406 Computer Security Sessional design project.
+Custom raw-socket SYN flood tool built from scratch (no hping3 / Scapy /
+other pre-built tools) for the CSE406 Computer Security Sessional.
 
-Tested and working in a **Mininet** virtual environment (Phase 1). Phase 2
-(two physical machines) is a separate, later step — see notes at the bottom.
+Works between **two real machines on the same LAN / hotspot** (Phase 2).
+Your PC is the **victim**, your friend's PC is the **attacker + legitimate
+client**.
+
+> ⚠️ Only run this on a network you control, ideally a hotspot with **only
+> your two machines connected**. Spoofed packets and a flood on a shared
+> Wi-Fi will disturb other users and can break the demo (see Troubleshooting).
+
+## Folder structure
+
+```
+syn-flood-project/
+├── attacker.py       # raw-socket SYN flood (single-thread)
+├── attacker2.py      # multi-thread version (higher rate) — for the browser demo
+├── victim.py         # small web server, deliberately small listen() backlog
+├── legit_client.py   # measures DoS: connects repeatedly, logs success/latency
+├── dashboard.py      # OPTIONAL live backlog monitor (victim PC only)
+├── web/              # the website the victim serves
+│   ├── index.html    # home page with a "Browse the Gallery" button
+│   └── cats.html     # gallery page the button links to (dynamic)
+└── README.md
+```
 
 ## Files
 
-| File | Purpose |
-|---|---|
-| `attacker.py` | Raw-socket SYN flood sender. Builds IP + TCP headers manually with `struct`, computes checksums ourselves. |
-| `victim.py` | Simple TCP server with a deliberately small `listen()` backlog (default 8), so queue saturation is easy to observe. |
-| `legit_client.py` | Simulates a legitimate client repeatedly connecting to the victim, logging success/fail and latency — this is how we *measure* denial of service, not just observe it. |
-
-## Prerequisites (run once per machine)
-
-```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y build-essential python3 python3-pip python3-venv \
-    wireshark tcpdump net-tools iproute2 iptables netcat-openbsd \
-    mininet ethtool
-sudo usermod -aG wireshark $USER
-```
-
-Log out and log back in (or reboot) after this so the `wireshark` group membership
-takes effect.
-
-Verify Mininet works:
-```bash
-sudo mn --test pingall
-```
-Should show `0% dropped`.
-
-## Project setup
-
-```bash
-mkdir -p ~/syn-flood-project
-cd ~/syn-flood-project
-# copy attacker.py, victim.py, legit_client.py into this folder
-```
-
-## Running the full demo (Mininet)
-
-Everything below is typed **inside the `mininet>` prompt**, unless stated otherwise.
-Replace `nidhi` with your own Linux username in every path.
-
-### 1. Clean start
-```bash
-sudo mn -c                                   # (normal terminal, before starting mininet)
-sudo mn --topo single,2 --mac --arp          # starts mininet, gives the mininet> prompt
-```
-This creates two hosts: `h1` (attacker, IP `10.0.0.1`) and `h2` (victim, IP `10.0.0.2`).
-
-### 2. Required fixes — apply every time you start a fresh Mininet session
-
-These are **not optional** — without them the attack will silently fail to work.
-They reset every time Mininet restarts, so re-apply them each session.
-
-```
-h1 ethtool -K h1-eth0 tx off
-h2 ethtool -K h2-eth0 rx off
-```
-> **Why:** the virtual NIC (veth) tries to "helpfully" recompute/offload the
-> checksum on send/receive. Since we already compute a correct checksum
-> ourselves, this offloading corrupts it, and the kernel silently drops the
-> packet on arrival. Disabling offload stops this interference.
-
-```
-h2 sysctl -w net.ipv4.tcp_syncookies=0
-h2 sysctl -w net.ipv4.conf.all.rp_filter=0
-h2 sysctl -w net.ipv4.conf.h2-eth0.rp_filter=0
-```
-> **Why:** SYN cookies (on by default on many distros) bypass the backlog
-> queue entirely, so it never fills up — this defeats the baseline attack
-> before you can even demonstrate it. `rp_filter` is Linux's anti-spoofing
-> "martian source" check; disabling it lets spoofed-source packets through.
-
-```
-h2 bash -c 'for i in $(seq 100 200); do ip neighbor add 10.0.0.$i lladdr 02:00:00:00:99:99 dev h2-eth0 nud permanent; done'
-```
-> **Why (the most important, non-obvious fix):** our attacker spoofs source
-> IPs in the range `10.0.0.100`–`10.0.0.200`, which is on the **same local
-> subnet** as the victim. When the victim tries to reply with SYN-ACK to a
-> spoofed address, it first has to ARP-resolve that address. Since no real
-> host exists at those IPs, ARP fails — and because this is a *directly
-> connected* subnet (no router in between), Linux treats that ARP failure as
-> an **immediate, synchronous "host unreachable"**, destroying the half-open
-> connection instantly instead of leaving it in the backlog until timeout.
-> Pre-loading a permanent (fake) ARP/neighbor entry for the whole spoofed
-> range tricks the kernel into thinking the address is resolved, so it sends
-> the SYN-ACK out normally (into the void) and the half-open connection
-> correctly stays queued until it times out — exactly like a real remote
-> spoofed address would behave.
-
-### 3. Start the victim server
-```
-h2 python3 /home/nidhi/syn-flood-project/victim.py 80 8 &
-h2 ss -tan
-```
-Confirm you see `LISTEN` on port 80.
-
-### 4. Baseline test (before attack)
-```
-h1 python3 /home/nidhi/syn-flood-project/legit_client.py 10.0.0.2 80 5 2
-```
-Expect `5/5 SUCCESS`, ~0ms latency. This is your "before" number.
-
-### 5. Launch the attack (once — don't run it twice by accident)
-```
-h1 python3 /home/nidhi/syn-flood-project/attacker.py 10.0.0.2 80 10.0.0 &
-```
-You should see `[attacker] sent N packets (rate pkt/s)` messages.
-
-### 6. Verify the backlog is filling (the core evidence)
-```
-h2 ss -tan state syn-recv
-```
-You should now see several rows with `10.0.0.2:80` as local address and
-spoofed IPs (`10.0.0.1xx`) as peer address — these are real half-open
-connections sitting in the backlog queue.
-
-### 7. Prove denial of service
-```
-h1 python3 /home/nidhi/syn-flood-project/legit_client.py 10.0.0.2 80 5 2
-```
-Expect `0/5 SUCCESS` (or much lower than baseline) while the attack is running.
-This is your "after" / attack number.
-
-### 8. Defense demo — SYN cookies
-```
-h2 sysctl -w net.ipv4.tcp_syncookies=1
-h1 python3 /home/nidhi/syn-flood-project/legit_client.py 10.0.0.2 80 5 2
-```
-Success rate should recover (back toward `5/5`) — this demonstrates the
-SYN-cookies defense working. Remember to set it back to `0` if you want to
-re-run the baseline attack afterward.
-
-### 9. Defense demo — rate limiting (iptables, optional)
-```
-h2 sysctl -w net.ipv4.tcp_syncookies=0
-h2 iptables -A INPUT -p tcp --syn --dport 80 -m hashlimit --hashlimit-above 50/sec --hashlimit-mode srcip --hashlimit-name synflood -j DROP
-```
-Re-run the attack + legit_client to see partial recovery from rate limiting.
-
-### 10. Cleanup
-```
-h1 pkill -9 -f attacker.py
-h2 pkill -f victim.py
-exit
-```
-If Mininet ever gets into a weird state, run `sudo mn -c` in a normal
-terminal before starting again.
-
-## Expected results summary
-
-| Run | `SYN_RECV` count | Legit client success |
+| File | Runs on | Purpose |
 |---|---|---|
-| Baseline (no attack, cookies off) | 0 | 5/5 (100%) |
-| Under attack (cookies off) | ~8–9 (backlog full) | 0/5 (0%) |
-| Under attack + SYN cookies | 0 | 5/5 (100%) |
-| Under attack + rate limiting | low | partial recovery |
+| `attacker.py` | attacker PC | Builds IP + TCP headers manually with `struct`, computes checksums, floods spoofed SYNs. |
+| `attacker2.py` | attacker PC | Same, but multi-threaded for a higher packet rate. Use when the browser demo drains the queue too fast. |
+| `victim.py` | victim PC | Serves `web/` over HTTP with a tiny `listen()` backlog (default 8) so the SYN queue saturates fast. |
+| `legit_client.py` | attacker PC | A legitimate client — how we *measure* denial of service (success rate + latency). |
+| `dashboard.py` | victim PC | Optional browser dashboard showing the half-open queue filling live. |
+| `web/index.html`, `web/cats.html` | served by victim | A small real-looking cat website; the button fails to load during the attack. |
+
+## Key idea (one paragraph)
+
+TCP sets up a connection with a 3-way handshake: SYN → SYN-ACK → ACK. When a
+SYN arrives, the server puts a **half-open** entry in its SYN backlog queue and
+waits for the final ACK. The attacker sends many SYNs with **spoofed source
+IPs** and never sends the ACK, so each half-open entry sits in the queue until
+it times out. Send them fast enough and the queue stays full, so **new SYNs
+from real clients are dropped → denial of service.**
+
+## Before you start — pick your IPs and a spoof range
+
+Run `ip addr` on both machines and note the interface (e.g. `wlo1`) and IP.
+
+Example used below (**substitute your own on the day**):
+
+| Machine | Role | IP | Interface |
+|---|---|---|---|
+| Your PC | victim | `172.24.0.79` | `wlo1` |
+| Friend's PC | attacker + legit | `172.24.0.164` | `wlo1` |
+
+- **Spoof range** = last octets used for the fake source IPs. Set it to a range
+  that contains **none of the real devices** on the subnet.
+- Check what's actually in use first:
+  ```bash
+  ip neighbor show          # any real MAC in your intended range = pick another range
+  ```
+- The example below uses **`180–200`**. This range appears in TWO places and
+  they **must match**: `LO, HI` at the top of `attacker.py` / `attacker2.py`,
+  and the victim's ARP pre-load loop.
+
+## Prerequisites (once per machine)
+
+```bash
+sudo apt update
+sudo apt install -y python3 iproute2 ethtool net-tools tcpdump
+```
+
+---
+
+## Running the demo
+
+### 1. VICTIM PC — setup + start the server
+
+```bash
+cd ~/syn-flood-project
+
+sudo ufw disable                                   # firewall off for the test
+sudo ethtool -K wlo1 rx off                        # stop NIC checksum offload (ok if it says "cannot change")
+sudo sysctl -w net.ipv4.tcp_syncookies=0           # baseline: defense OFF
+sudo sysctl -w net.ipv4.conf.all.rp_filter=0       # allow spoofed sources
+sudo sysctl -w net.ipv4.conf.wlo1.rp_filter=0
+
+# pre-load fake ARP entries for the spoof range (MUST match attacker LO-HI)
+sudo bash -c 'for i in $(seq 180 200); do ip neighbor replace 172.24.0.$i lladdr 02:00:00:00:99:99 dev wlo1 nud permanent; done'
+
+# start the web server (small backlog = 8)
+sudo pkill -f victim.py 2>/dev/null
+sudo python3 victim.py 80 8 &
+ss -tan | grep :80                                 # expect: LISTEN 0 8 0.0.0.0:80
+```
+
+> **Why each fix matters**
+> - **checksum offload off:** the NIC re-computes checksums and corrupts the ones we built, so the kernel drops our packets.
+> - **syncookies=0:** with cookies ON the backlog never fills — that's the defense; turn OFF for the baseline attack.
+> - **rp_filter=0:** Linux's anti-spoofing check; disabling it lets spoofed sources through.
+> - **ARP pre-load (most important):** on the same subnet the victim ARPs for each spoofed IP before sending SYN-ACK. Nobody answers, so Linux marks it "host unreachable" and drops the half-open entry instantly. A fake permanent ARP entry makes the kernel think the address is resolved, so SYN-ACK goes out (into the void) and the half-open connection correctly stays queued — exactly like a remote spoofed IP.
+
+### 2. ATTACKER PC — setup
+
+```bash
+cd ~/syn-flood-project
+sudo ethtool -K wlo1 tx off                        # stop send-side checksum offload
+# make sure LO, HI at the top of the attacker script = your spoof range (180, 200)
+```
+
+### 3. Baseline (before attack) — ATTACKER PC
+
+```bash
+python3 legit_client.py 172.24.0.79 80 5 2         # expect 5/5 SUCCESS
+```
+Also open `http://172.24.0.79` in the friend's browser → the cat site loads,
+and the **Browse the Gallery** button works. This is your "before".
+
+### 4. Launch the attack — ATTACKER PC
+
+```bash
+# single-thread:
+sudo python3 attacker.py 172.24.0.79 80 172.24.0 &
+# OR, if the browser demo drains the queue, use more threads:
+sudo python3 attacker2.py 172.24.0.79 80 172.24.0 16 &
+```
+
+### 5. Show the backlog filling — VICTIM PC (the core evidence)
+
+```bash
+ss -tan state syn-recv                 # rows with spoofed 172.24.0.18x peers
+ss -tan state syn-recv | wc -l         # ~8-9 = queue full
+sudo dmesg | grep -i syn               # "Possible SYN flooding on port 80"
+```
+Optional live view: `python3 dashboard.py 8` then open `http://localhost:8080`.
+
+### 6. Prove denial of service — ATTACKER PC (while the attack runs)
+
+```bash
+python3 legit_client.py 172.24.0.79 80 5 2         # expect 0/5 SUCCESS
+```
+In the browser, click **Browse the Gallery** → it just spins and never loads.
+"before 5/5 + site works" vs "after 0/5 + site down" = your DoS proof.
+
+### 7. Defense demo — VICTIM PC (attack still running)
+
+```bash
+sudo sysctl -w net.ipv4.tcp_syncookies=1           # turn defense ON
+```
+Then, ATTACKER PC:
+```bash
+python3 legit_client.py 172.24.0.79 80 5 2         # recovers toward 5/5
+```
+The dashboard may still show the queue "full" (spoofed SYNs keep arriving), but
+legit clients now succeed — that is exactly SYN cookies working: the queue can
+be full yet real clients are let in via the cookie, so full no longer means
+blocked. To re-run the baseline attack later, set it back to `=0`.
+
+### 8. Cleanup (restore everything)
+
+```bash
+# ATTACKER PC
+sudo pkill -9 -f attacker
+sudo ethtool -K wlo1 tx on
+
+# VICTIM PC
+sudo pkill -f victim.py
+sudo ip neighbor flush dev wlo1
+sudo sysctl -w net.ipv4.tcp_syncookies=1
+sudo sysctl -w net.ipv4.conf.all.rp_filter=1
+sudo sysctl -w net.ipv4.conf.wlo1.rp_filter=1
+sudo ethtool -K wlo1 rx on
+sudo ufw enable
+```
+Everything above is runtime-only — a **reboot** of both machines also restores
+defaults (then just `sudo ufw enable`).
+
+## Expected results
+
+| Run | `SYN_RECV` count | Legit success | Browser |
+|---|---|---|---|
+| Baseline (no attack, cookies off) | 0 | 5/5 (100%) | site + button work |
+| Under attack (cookies off) | ~8–9 (full) | 0/5 (0%) | button won't load |
+| Under attack + SYN cookies | still ~8–9 | back to 5/5 | site works again |
 
 ## Troubleshooting
 
-- **`h1: command not found` / `bash: syntax error`** — you typed a command
-  into the *normal* Linux terminal instead of the `mininet>` prompt (or
-  copied stray backticks/prompt text along with the command). Only type the
-  plain command text shown above, and only after you see `mininet>`.
-- **`Address already in use` when starting `victim.py`** — a previous
-  `victim.py` is already running and holding port 80. This is often harmless
-  (the first instance is still running fine); confirm with `h2 ss -tan`.
-- **`ethtool: command not found`** — install it: `sudo apt install ethtool -y`,
-  then restart Mininet.
-- **Backlog stays at 0 / `ss -tan state syn-recv` shows nothing despite the
-  attack running** — almost always one of: (a) SYN cookies still on, (b) the
-  ARP pre-load step (2) wasn't run for the *current* Mininet session, or (c)
-  checksum offload wasn't disabled. Re-check step 2 in full; it must be
-  re-applied every time Mininet restarts.
-- **`legit_client.py` shows 100% success even under attack** — check
-  `h2 sysctl net.ipv4.tcp_syncookies`; if it's `1`, a previous defense-demo
-  step left it on. Set it back to `0` and re-run the attack.
-
-## Moving to Phase 2 (two physical machines)
-
-The same three scripts work unchanged on real machines — only the network
-setup changes:
-1. Connect both PCs to the same LAN/switch (or router).
-2. Find each machine's real IP (`ip addr`) and make sure they can `ping`
-   each other.
-3. Run `victim.py` on the victim PC, `attacker.py <victim's real IP> 80 <victim's subnet prefix>`
-   on the attacker PC.
-4. Re-apply the same fixes (steps 2.1–2.4 above) using the real interface
-   names (`ip addr` shows these, e.g. `eth0` or `wlan0` instead of `h1-eth0`).
+- **`ss ... syn-recv` stays empty / attack does nothing** — usually one of:
+  (a) syncookies still `=1`, (b) ARP entries missing or gone `FAILED`
+  (re-run the `ip neighbor replace` loop; check `ip neighbor show dev wlo1`),
+  (c) checksum offload not disabled on the sender.
+- **ARP entries show `FAILED`** — re-apply them with `ip neighbor replace`
+  (not `add`, which errors with "File exists"). They can turn `FAILED` after a
+  reboot or long idle; just replace them again.
+- **A real device sits inside your spoof range** (e.g. `ip neighbor show` lists
+  a real MAC at `172.24.0.101`) — it will send RST and weaken the attack. Move
+  the spoof range (both the attacker `LO/HI` and the ARP loop) to empty
+  addresses, or use a hotspot with only your two machines.
+- **Legit client shows 100% even under attack** — check
+  `sysctl net.ipv4.tcp_syncookies`; if `1`, a defense step left it on. Set `=0`.
+- **Browser button sometimes still loads under attack** — the victim's
+  `accept()` drains the queue; raise the rate with `attacker2.py 16` (or more
+  threads).
+- **`ethtool: cannot change ... rx-checksum`** — some Wi-Fi cards lock this;
+  it's usually fine. Make sure the **attacker's** `tx off` worked, and just try
+  the attack; if the queue fills, ignore the warning.

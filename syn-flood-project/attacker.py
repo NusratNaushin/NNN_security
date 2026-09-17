@@ -98,7 +98,7 @@ def random_spoofed_ip(spoof_prefix: str) -> str:
     is chosen from addresses verified not to answer with RST.
     spoof_prefix example: "10.0.0" -> generates 10.0.0.<100-200>
     """
-    last_octet = random.randint(100, 200)
+    last_octet = random.randint(100, 150)
     return f"{spoof_prefix}.{last_octet}"
 
 
