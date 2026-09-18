@@ -36,8 +36,10 @@
   .more { text-align:center; margin-top:30px; }
   .morebtn { cursor:pointer; background:var(--brand); color:#fff; border:none; font-family:inherit;
              font-size:15px; font-weight:600; padding:13px 28px; border-radius:12px;
-             box-shadow:0 6px 18px rgba(108,92,231,0.35); }
+             box-shadow:0 6px 18px rgba(108,92,231,0.35); min-width:200px; }
   .morebtn:hover { background:var(--brand-dark); }
+  .morebtn:disabled { opacity:.7; cursor:default; }
+  .err { color:#c0392b; font-size:13px; margin-top:12px; min-height:18px; }
 </style>
 </head>
 <body>
@@ -51,16 +53,13 @@
     <p class="sub">Every one of these fluffballs is looking for a forever home.</p>
     <div class="fact" id="fact">🐈 Did you know? Loading a fun cat fact...</div>
     <div class="grid" id="grid"></div>
-    <div class="more"><button class="morebtn" onclick="addCat()">Load more cats 🐾</button></div>
+    <div class="more">
+      <button class="morebtn" id="moreBtn" onclick="loadMore()">Load more cats 🐾</button>
+      <div class="err" id="err"></div>
+    </div>
   </div>
 <script>
-  const emojis = ["🐱","🐈","😺","😸","😻","🙀","😹","😽","🐈‍⬛","🐅","🐆"];
-  const names  = ["Whiskers","Mochi","Luna","Simba","Nala","Oliver","Cleo","Milo",
-                  "Tigger","Pumpkin","Shadow","Biscuit","Coco","Pepper","Ziggy"];
-  const breeds = ["Persian","Tabby","Siamese","Bengal","Ragdoll","Maine Coon",
-                  "British Shorthair","Calico","Sphynx","Scottish Fold"];
-  const tags   = ["Adoptable","New arrival","Playful","Cuddly","Shy","Loves naps"];
-  const facts  = [
+  const facts = [
     "Cats sleep for around 13–16 hours a day.",
     "A group of cats is called a 'clowder'.",
     "Cats have five toes on their front paws, but only four on the back.",
@@ -70,17 +69,47 @@
     "Cats can make over 100 different vocal sounds."
   ];
   const pick = a => a[Math.floor(Math.random()*a.length)];
-  function makeCat(){
+
+  function renderCat(c){
     const el = document.createElement('div'); el.className = 'tile';
-    el.innerHTML = `<div class="emo">${pick(emojis)}</div>
-                    <div class="name">${pick(names)}</div>
-                    <div class="breed">${pick(breeds)}</div>
-                    <div class="tag">${pick(tags)}</div>`;
-    return el;
+    el.innerHTML = `<div class="emo">${c.emoji}</div>
+                    <div class="name">${c.name}</div>
+                    <div class="breed">${c.breed}</div>
+                    <div class="tag">${c.tag}</div>`;
+    document.getElementById('grid').appendChild(el);
   }
-  function addCat(){ document.getElementById('grid').appendChild(makeCat()); }
-  const grid = document.getElementById('grid');
-  for (let i=0;i<8;i++) grid.appendChild(makeCat());
+
+  // "Load more" now asks the SERVER for a cat -> needs a live connection,
+  // so it fails (spins / errors) when the victim is under SYN flood.
+  async function loadMore(){
+    const btn = document.getElementById('moreBtn');
+    const err = document.getElementById('err');
+    btn.disabled = true; btn.textContent = 'Loading...'; err.textContent = '';
+    try {
+      // fetch a few new cats from the server
+      for (let i=0;i<3;i++){
+        const r = await fetch('/api/cats', { cache: 'no-store' });
+        const c = await r.json();
+        renderCat(c);
+      }
+    } catch (e) {
+      err.textContent = '⚠️ Could not reach the server. Please try again.';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Load more cats 🐾';
+    }
+  }
+
+  // initial gallery: load 8 from the server
+  (async () => {
+    for (let i=0;i<8;i++){
+      try {
+        const r = await fetch('/api/cats', { cache: 'no-store' });
+        renderCat(await r.json());
+      } catch (e) { /* ignore on first paint */ }
+    }
+  })();
+
+  // rotating fun fact (client-side, just cosmetic)
   const factBox = document.getElementById('fact');
   function newFact(){ factBox.textContent = "🐈 Did you know? " + pick(facts); }
   newFact(); setInterval(newFact, 4000);

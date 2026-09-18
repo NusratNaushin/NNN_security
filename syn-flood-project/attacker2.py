@@ -24,7 +24,7 @@ import time
 import threading
 
 # spoofed last-octet range (keep OUTSIDE the real victim/attacker IPs)
-LO, HI = 100, 150
+LO, HI = 180, 200
 
 
 def checksum(data: bytes) -> int:
